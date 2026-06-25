@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg: #080d14;
+  --bg-card: #111827;
+  --bg-secondary: #0d1520;
+  --border: #1e2d3d;
+  --teal: #00d4a0;
+  --teal-dim: rgba(0,212,160,0.12);
+  --purple: #8b5cf6;
+  --purple-dim: rgba(139,92,246,0.12);
+  --gold: #f59e0b;
+  --gold-dim: rgba(245,158,11,0.12);
+  --pink: #ec4899;
+  --blue: #3b82f6;
+  --text: #f0f6ff;
+  --text2: #8ba3be;
+  --text3: #4a6580;
+  --danger: #ef4444;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body, #root { min-height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+.stat { font-family: 'Space Grotesk', sans-serif; font-weight: 700; }
+.grid-bg {
+  background-image: linear-gradient(rgba(0,212,160,0.025) 1px,transparent 1px), linear-gradient(90deg,rgba(0,212,160,0.025) 1px,transparent 1px);
+  background-size: 36px 36px;
+}
+@keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.fade { animation: fadeIn 0.3s ease; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block; }
+
+input, textarea {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.2s;
+}
+input:focus, textarea:focus { border-color: var(--teal); }
+button { cursor: pointer; font-family: 'Inter', sans-serif; font-weight: 600; border: none; border-radius: 8px; transition: all 0.2s; }
+
+.tab-btn {
+  padding: 8px 16px;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text2);
+  font-size: 13px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tab-btn.active {
+  background: var(--teal-dim);
+  border-color: var(--teal);
+  color: var(--teal);
+}
