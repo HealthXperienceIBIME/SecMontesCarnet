@@ -293,7 +293,11 @@ export default function CarnetPage() {
     <div className="grid-bg" style={{ minHeight:'100vh', padding:'20px 16px' }}>
       <div style={{ maxWidth: 700, margin: '0 auto' }}>
         {/* Header */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+          <img src="/SecMontesCarnet/logo-hx.png" alt="HealthXperience" style={{ height: 36, objectFit: 'contain' }} />
+          <span style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, color:'var(--text3)', textTransform:'uppercase' }}>Carnet Digital</span>
+          <img src="/SecMontesCarnet/logo-ibime.png" alt="IBIME" style={{ height: 32, objectFit: 'contain' }} />
+       </div>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ width:32, height:32, borderRadius:8, background:'linear-gradient(135deg,#00d4a0,#8b5cf6)', display:'flex',alignItems:'center',justifyContent:'center', fontSize:16 }}>💚</div>
             <span style={{ fontFamily:'Space Grotesk', fontWeight:700, fontSize:13, color:'var(--teal)', letterSpacing:1 }}>HEALTHXPERIENCE</span>
