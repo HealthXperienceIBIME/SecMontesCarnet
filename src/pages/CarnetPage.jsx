@@ -6,17 +6,39 @@ import { db } from '../firebase/config'
 
 const GEMINI_KEY = 'AQ.Ab8RN6LH-pjj99MuXxy5gY6Diu0WCdvr_S7gnJ96KscDrYbypw'
 
-async function gemini(prompt) {
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': GEMINI_KEY
-    },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.8, maxOutputTokens: 1024 } })
-  })
-  const d = await res.json()
-  return d.candidates?.[0]?.content?.parts?.[0]?.text || ''
+async function generateWithGemini(prompt) {
+  // 1. Pasamos la API_KEY directamente como parámetro en la URL (?key=...)
+  // 2. Actualizamos el modelo a gemini-2.5-flash
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { 
+          temperature: 0.8, 
+          maxOutputTokens: 2048 
+        }
+      })
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      console.error('Error de la API de Gemini:', errorData);
+      return `Error en la IA: ${errorData.error?.message || 'No se pudo conectar'}`;
+    }
+
+    const data = await res.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sin respuesta';
+
+  } catch (error) {
+    console.error('Error de red/conexión:', error);
+    return 'Error de red al conectar con la IA.';
+  }
 }
 
 function IMC_COLOR(v) {
