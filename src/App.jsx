@@ -6,7 +6,7 @@ import './index.css'
 
 export default function App() {
   return (
-    <BrowserRouter basename="/healthxperience-carnet">
+   <BrowserRouter basename="/SecMontesCarnet">
       <Routes>
         <Route path="/" element={<Navigate to="/HX-IBIME-001" />} />
         <Route path="/:qrId" element={<CarnetPage />} />
