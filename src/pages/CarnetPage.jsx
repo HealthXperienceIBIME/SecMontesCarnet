@@ -7,7 +7,7 @@ import { db } from '../firebase/config'
 const GEMINI_KEY = 'AQ.Ab8RN6LH-pjj99MuXxy5gY6Diu0WCdvr_S7gnJ96KscDrYbypw'
 
 async function gemini(prompt) {
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`, {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.8, maxOutputTokens: 1024 } })
@@ -23,8 +23,6 @@ function IMC_COLOR(v) {
   if (v <= 29.9) return '#f59e0b'
   return '#ef4444'
 }
-
-// ── TAB: Resultados ──────────────────────────────────────────────────────────
 
 function TabResultados({ p }) {
   const pr = p.pruebas || {}
@@ -46,7 +44,6 @@ function TabResultados({ p }) {
           ))}
         </div>
       </div>
-
       <div>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 12 }}>Análisis Físico</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
@@ -69,11 +66,8 @@ function TabResultados({ p }) {
   )
 }
 
-// ── TAB: Recomendaciones ─────────────────────────────────────────────────────
-
 function TabRecomendaciones({ p }) {
   const text = p.recomendaciones || ''
-
   const renderMD = (t) => t.split('\n').map((line, i) => {
     if (line.startsWith('## ')) {
       const icon = line.includes('JARRA') ? '💧' : line.includes('PLATO') ? '🥗' : line.includes('DIETA') ? '📅' : '✨'
@@ -86,13 +80,9 @@ function TabRecomendaciones({ p }) {
       {parts.map((pp,j) => j%2===1 ? <strong key={j} style={{color:'var(--text)'}}>{pp}</strong> : pp)}
     </p>
   })
-
   if (!text) return <div style={{ textAlign:'center', padding:40, color:'var(--text3)' }}>Las recomendaciones aún no han sido generadas en la estación IA.</div>
-
   return <div className="fade" style={{ lineHeight:1.8 }}>{renderMD(text)}</div>
 }
-
-// ── TAB: Asesor IA ────────────────────────────────────────────────────────────
 
 function TabAsesorIA({ p }) {
   const [msgs, setMsgs] = useState([
@@ -110,7 +100,6 @@ function TabAsesorIA({ p }) {
     setInput('')
     setMsgs(prev => [...prev, { role: 'user', text: q }])
     setLoading(true)
-
     const context = `Eres un asesor de salud y nutrición amigable para adolescentes. El participante se llama ${p.nombre}, tiene ${p.edad} años, sexo ${p.sexo}, peso ${p.peso}kg, altura ${p.altura}m, IMC ${p.imc ?? 'N/A'}. Pruebas: salto ${p.pruebas?.saltoCuerda ?? 0} reps, lanzamiento ${p.pruebas?.lanzamiento ?? 0}m, carrera ${p.pruebas?.carrera ?? 0}s. Responde en español, de forma amigable, breve y motivadora. Pregunta del usuario: ${q}`
     const ans = await gemini(context)
     setMsgs(prev => [...prev, { role: 'ai', text: ans }])
@@ -123,7 +112,6 @@ function TabAsesorIA({ p }) {
         <div style={{ fontWeight: 700, color: 'var(--teal)', fontSize: 13, marginBottom: 2 }}>💬 Asesor IA de Salud</div>
         <div style={{ fontSize: 11, color: 'var(--text2)' }}>Basado en Plato del Buen Comer y Jarra del Buen Beber</div>
       </div>
-
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
         {msgs.map((m, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
@@ -139,7 +127,6 @@ function TabAsesorIA({ p }) {
         {loading && <div style={{ display:'flex',gap:8,alignItems:'center' }}><div style={{ width:28,height:28,borderRadius:'50%',background:'var(--teal-dim)',border:'1px solid var(--teal)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14 }}>💚</div><span className="spin" /></div>}
         <div ref={endRef} />
       </div>
-
       <div style={{ display: 'flex', gap: 10 }}>
         <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Pregunta sobre tu salud..." />
         <button onClick={send} disabled={!input.trim() || loading}
@@ -150,8 +137,6 @@ function TabAsesorIA({ p }) {
     </div>
   )
 }
-
-// ── TAB: Simular ─────────────────────────────────────────────────────────────
 
 function TabSimular({ p }) {
   const [peso, setPeso] = useState(p.peso || 60)
@@ -208,7 +193,6 @@ function TabSimular({ p }) {
           {imcOk && <span style={{ color:'var(--teal)', fontSize:13, fontWeight:600 }}>✓ Saludable</span>}
         </div>
       </div>
-
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ fontWeight:700, color:'var(--purple)', marginBottom:14, fontSize:13 }}>✨ SIMULAR RENDIMIENTO</div>
         <p style={{ color:'var(--text2)', fontSize:12, marginBottom:16 }}>Ajusta los parámetros para ver cómo cambiarían tus métricas.</p>
@@ -239,7 +223,6 @@ function TabSimular({ p }) {
           </tbody>
         </table>
       </div>
-
       <button onClick={handleAnalyze} disabled={analyzing}
         style={{ width:'100%', padding:14, background:'linear-gradient(90deg,#00d4a0,#8b5cf6)', color:'#fff', borderRadius:10, fontSize:14, display:'flex',alignItems:'center',justifyContent:'center',gap:10 }}>
         {analyzing ? <><span className="spin" style={{width:16,height:16}} /> Analizando...</> : '✨ Analizar cambios con IA'}
@@ -248,8 +231,6 @@ function TabSimular({ p }) {
     </div>
   )
 }
-
-// ── Main Carnet Page ──────────────────────────────────────────────────────────
 
 export default function CarnetPage() {
   const { qrId } = useParams()
@@ -292,17 +273,12 @@ export default function CarnetPage() {
   return (
     <div className="grid-bg" style={{ minHeight:'100vh', padding:'20px 16px' }}>
       <div style={{ maxWidth: 700, margin: '0 auto' }}>
+
         {/* Header */}
-       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
           <img src="/SecMontesCarnet/logo-hx.png" alt="HealthXperience" style={{ height: 36, objectFit: 'contain' }} />
           <span style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, color:'var(--text3)', textTransform:'uppercase' }}>Carnet Digital</span>
           <img src="/SecMontesCarnet/logo-ibime.png" alt="IBIME" style={{ height: 32, objectFit: 'contain' }} />
-       </div>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ width:32, height:32, borderRadius:8, background:'linear-gradient(135deg,#00d4a0,#8b5cf6)', display:'flex',alignItems:'center',justifyContent:'center', fontSize:16 }}>💚</div>
-            <span style={{ fontFamily:'Space Grotesk', fontWeight:700, fontSize:13, color:'var(--teal)', letterSpacing:1 }}>HEALTHXPERIENCE</span>
-          </div>
-          <span style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, color:'var(--text3)', textTransform:'uppercase' }}>Carnet Digital</span>
         </div>
 
         {/* Profile card */}
@@ -353,6 +329,7 @@ export default function CarnetPage() {
         <div style={{ textAlign:'center', marginTop:24, color:'var(--text3)', fontSize:11 }}>
           HEALTHXPERIENCE · IBIME 2026
         </div>
+
       </div>
     </div>
   )
