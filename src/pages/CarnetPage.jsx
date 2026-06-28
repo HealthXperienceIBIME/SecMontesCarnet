@@ -4,20 +4,69 @@ import { useParams } from 'react-router-dom'
 import { doc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase/config'
 
+// ⚠️ REEMPLAZA CON TU LLAVE DE GEMINI REAL
 const GEMINI_KEY = 'TU_GEMINI_API_KEY'
 
-async function gemini(prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
+/**
+ * Función optimizada para obtener respuestas con Streaming (efecto máquina de escribir en tiempo real).
+ * @param {string} prompt - El texto que se le envía a la IA
+ * @param {function} onChunk - Callback que recibe cada fragmento de texto conforme llega
+ */
+async function geminiStream(prompt, onChunk) {
+  // Usamos el endpoint "streamGenerateContent" para activar la transmisión en tiempo real
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=${GEMINI_KEY}`;
+  
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.8, maxOutputTokens: 1024 } })
-    })
-    if (!res.ok) return ''
-    const d = await res.json()
-    return d.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  } catch { return '' }
+      body: JSON.stringify({ 
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.7, maxOutputTokens: 1024 } 
+      })
+    });
+
+    if (!res.ok) return;
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      
+      // La API de Google envía estructuras JSON separadas por comas/llaves en líneas o bloques.
+      // Este bloque procesa los fragmentos de texto conforme van llegando de manera limpia.
+      try {
+        // Buscamos los bloques de texto generados por Gemini dentro del stream
+        const regex = /"text":\s*"((?:[^"\\]|\\.)*)"/g;
+        let match;
+        let textChunk = '';
+        
+        while ((match = regex.exec(buffer)) !== null) {
+          // Evaluamos el string para limpiar escapes como \n o \"
+          try {
+            textChunk += JSON.parse(`"${match[1]}"`);
+          } catch {
+            textChunk += match[1];
+          }
+        }
+        
+        if (textChunk) {
+          onChunk(textChunk);
+          // Limpiamos el buffer procesado para evitar duplicados en la siguiente iteración
+          buffer = buffer.substring(buffer.lastIndexOf('}') + 1);
+        }
+      } catch (e) {
+        // Si el JSON está incompleto en ese instante, espera al siguiente chunk
+      }
+    }
+  } catch (error) {
+    console.error("Error en Gemini Stream:", error);
+  }
 }
 
 function getIMCTipo(imc) {
@@ -37,7 +86,6 @@ function IMC_COLOR(v) {
 }
 
 // ── TAB: Resultados ──────────────────────────────────────────────────────────
-
 function TabResultados({ p }) {
   const pr = p.pruebas || {}
   const omitidas = p.pruebasOmitidas
@@ -92,7 +140,6 @@ function TabResultados({ p }) {
 }
 
 // ── TAB: Recomendaciones ─────────────────────────────────────────────────────
-
 function TabRecomendaciones({ p }) {
   const text = p.recomendaciones || ''
   const tipo = getIMCTipo(p.imc)
@@ -112,7 +159,6 @@ function TabRecomendaciones({ p }) {
     </div>
   )
 
-  // Parse sections
   const parsed = {}
   let current = null
   text.split('\n').forEach(line => {
@@ -134,13 +180,11 @@ function TabRecomendaciones({ p }) {
     <div className="fade">
       {Object.entries(SECTIONS).map(([key, { icon, color, img }]) => (
         <div key={key} style={{ marginBottom: 18, background: color + '08', border: `1px solid ${color}25`, borderRadius: 14, overflow: 'hidden' }}>
-          {/* Section header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: `1px solid ${color}20` }}>
             <span style={{ fontSize: 20 }}>{icon}</span>
             <h3 style={{ fontFamily: 'Space Grotesk', fontSize: 13, fontWeight: 700, color, margin: 0 }}>{key}</h3>
           </div>
 
-          {/* Image if available */}
           {img && (
             <div style={{ padding: '16px 18px 0' }}>
               <img
@@ -152,7 +196,6 @@ function TabRecomendaciones({ p }) {
             </div>
           )}
 
-          {/* Content */}
           <div style={{ padding: '12px 18px 16px' }}>
             {parsed[key] ? renderLines(parsed[key]) : <p style={{ color: 'var(--text3)', fontSize: 13 }}>Sin información</p>}
           </div>
@@ -162,8 +205,7 @@ function TabRecomendaciones({ p }) {
   )
 }
 
-// ── TAB: Asesor IA ────────────────────────────────────────────────────────────
-
+// ── TAB: Asesor IA (CON RENDIMIENTO VELOZ MEDIANTE STREAMING) ─────────────────
 function TabAsesorIA({ p }) {
   const [msgs, setMsgs] = useState([
     { role: 'ai', text: `¡Hola ${p.nombre}! 👋 Soy tu asesor de salud con IA. Conozco tus datos físicos y puedo darte recomendaciones personalizadas basadas en el Plato del Buen Comer, la Jarra del Buen Beber y consejos de entrenamiento. ¿En qué puedo ayudarte?` }
@@ -177,13 +219,26 @@ function TabAsesorIA({ p }) {
   const send = async () => {
     const q = input.trim()
     if (!q || loading) return
+    
     setInput('')
-    setMsgs(prev => [...prev, { role: 'user', text: q }])
+    // Agregamos la pregunta del usuario y creamos un mensaje vacío para la IA que llenaremos progresivamente
+    setMsgs(prev => [...prev, { role: 'user', text: q }, { role: 'ai', text: '' }])
     setLoading(true)
-    const context = `Eres un asesor de salud y nutrición amigable. El participante se llama ${p.nombre}, tiene ${p.edad} años, sexo ${p.sexo}, peso ${p.peso}kg, altura ${p.altura}m, IMC ${p.imc ?? 'N/A'} (${p.imcStatus || 'Normal'}).${p.pruebas ? ` Pruebas: salto ${p.pruebas.saltoCuerda} reps, lanzamiento ${p.pruebas.lanzamiento}m, carrera ${p.pruebas.carrera}s.` : ' No realizó pruebas físicas.'} Responde en español, de forma amigable, breve y motivadora. Pregunta: ${q}`
-    const ans = await gemini(context)
-    setMsgs(prev => [...prev, { role: 'ai', text: ans || 'No pude generar una respuesta, intenta de nuevo.' }])
-    setLoading(false)
+    
+    const context = `Eres un asesor de salud y nutrición amigable para adolescentes mexicanos. El participante se llama ${p.nombre}, tiene ${p.edad} años, sexo ${p.sexo}, peso ${p.peso}kg, altura ${p.altura}m, IMC ${p.imc ?? 'N/A'} (${p.imcStatus || 'Normal'}).${p.pruebas ? ` Pruebas: salto ${p.pruebas.saltoCuerda} reps, lanzamiento ${p.pruebas.lanzamiento}m, carrera ${p.pruebas.carrera}s.` : ' No realizó pruebas físicas.'} Responde en español de forma amigable, breve (máximo 3 líneas) y motivadora. Pregunta: ${q}`;
+    
+    // Llamamos a la nueva función de Streaming
+    await geminiStream(context, (textAcumulado) => {
+      setMsgs(prev => {
+        const actualizados = [...prev];
+        // Modificamos el último elemento (que pertenece a la IA) en tiempo real
+        actualizados[actualizados.length - 1] = { role: 'ai', text: textAcumulado };
+        return actualizados;
+      });
+      setLoading(false); // Desactivamos el spinner en cuanto empiezan a salir las letras
+    });
+    
+    setLoading(false);
   }
 
   return (
@@ -193,19 +248,24 @@ function TabAsesorIA({ p }) {
         <div style={{ fontSize: 11, color: 'var(--text2)' }}>Basado en Plato del Buen Comer y Jarra del Buen Beber</div>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
-        {msgs.map((m, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-            {m.role === 'ai' && <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--teal-dim)', border: '1px solid var(--teal)', display:'flex',alignItems:'center',justifyContent:'center', marginRight: 8, flexShrink: 0, fontSize: 14 }}>💚</div>}
-            <div style={{
-              maxWidth: '78%', padding: '10px 14px',
-              borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-              background: m.role === 'user' ? 'var(--teal-dim)' : 'var(--bg-secondary)',
-              border: `1px solid ${m.role === 'user' ? 'var(--teal)' : 'var(--border)'}`,
-              fontSize: 13, lineHeight: 1.6, color: 'var(--text)'
-            }}>{m.text}</div>
-          </div>
-        ))}
-        {loading && (
+        {msgs.map((m, i) => {
+          // No renderizar burbujas vacías que ocurran durante el primer milisegundo de carga
+          if (m.role === 'ai' && !m.text && loading) return null;
+          
+          return (
+            <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+              {m.role === 'ai' && <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--teal-dim)', border: '1px solid var(--teal)', display:'flex',alignItems:'center',justifyContent:'center', marginRight: 8, flexShrink: 0, fontSize: 14 }}>💚</div>}
+              <div style={{
+                maxWidth: '78%', padding: '10px 14px',
+                borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                background: m.role === 'user' ? 'var(--teal-dim)' : 'var(--bg-secondary)',
+                border: `1px solid ${m.role === 'user' ? 'var(--teal)' : 'var(--border)'}`,
+                fontSize: 13, lineHeight: 1.6, color: 'var(--text)'
+              }}>{m.text}</div>
+            </div>
+          )
+        })}
+        {loading && !msgs[msgs.length - 1]?.text && (
           <div style={{ display:'flex',gap:8,alignItems:'center' }}>
             <div style={{ width:28,height:28,borderRadius:'50%',background:'var(--teal-dim)',border:'1px solid var(--teal)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14 }}>💚</div>
             <span className="spin" />
@@ -224,8 +284,7 @@ function TabAsesorIA({ p }) {
   )
 }
 
-// ── TAB: Simular ─────────────────────────────────────────────────────────────
-
+// ── TAB: Simular (CON RESPUESTA VELOZ MEDIANTE STREAMING) ─────────────────────
 function TabSimular({ p }) {
   const [peso, setPeso] = useState(p.peso || 60)
   const [altura, setAltura] = useState(p.altura || 1.6)
@@ -247,8 +306,15 @@ function TabSimular({ p }) {
 
   const handleAnalyze = async () => {
     setAnalyzing(true)
-    const ans = await gemini(`El usuario ${p.nombre} simula cambiar su peso de ${p.peso}kg a ${simPeso}kg y su tiempo de 45m de ${p.pruebas?.carrera ?? '—'}s a ${simCarrera}s. Nuevo IMC: ${newIMC.toFixed(2)} (${imcLabel}). Nueva velocidad: ${simV.toFixed(2)}m/s, aceleración: ${simA.toFixed(2)}m/s², fuerza: ${simF.toFixed(2)}N. Analiza brevemente si estos cambios son saludables y cómo mejorar. Responde en 2-3 oraciones en español.`)
-    setAnalysis(ans)
+    setAnalysis('') // Limpiamos análisis anterior
+    
+    const prompt = `El usuario ${p.nombre} simula cambiar su peso de ${p.peso}kg a ${simPeso}kg y su tiempo de 45m de ${p.pruebas?.carrera ?? '—'}s a ${simCarrera}s. Nuevo IMC: ${newIMC.toFixed(2)} (${imcLabel}). Nueva velocidad: ${simV.toFixed(2)}m/s, aceleración: ${simA.toFixed(2)}m/s², fuerza: ${simF.toFixed(2)}N. Analiza de manera súper breve si estos cambios son saludables y cómo mejorar. Responde en máximo 2 oraciones concisas en español.`;
+    
+    await geminiStream(prompt, (textAcumulado) => {
+      setAnalysis(textAcumulado);
+      setAnalyzing(false); // Apagamos animación de carga apenas empiece a responder
+    });
+    
     setAnalyzing(false)
   }
 
@@ -329,7 +395,6 @@ function TabSimular({ p }) {
 }
 
 // ── Main Carnet Page ──────────────────────────────────────────────────────────
-
 export default function CarnetPage() {
   const { qrId } = useParams()
   const id = qrId?.toUpperCase()
@@ -341,9 +406,9 @@ export default function CarnetPage() {
     async function load() {
       const snap = await getDoc(doc(db, 'participants', id))
       setParticipant(snap.exists() ? { id: snap.id, ...snap.data() } : false)
-      setLoading(false)
+      Loading(false)
     }
-    load()
+    Load()
   }, [id])
 
   if (loading) return (
