@@ -5,7 +5,7 @@ import { doc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase/config'
 
 // ⚠️ REEMPLAZA CON TU LLAVE DE GEMINI REAL
-const GEMINI_KEY = 'TU_GEMINI_API_KEY'
+const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY
 
 /**
  * Función optimizada para obtener respuestas con Streaming (efecto máquina de escribir en tiempo real).
