@@ -406,7 +406,7 @@ export default function CarnetPage() {
     async function load() {
       const snap = await getDoc(doc(db, 'participants', id))
       setParticipant(snap.exists() ? { id: snap.id, ...snap.data() } : false)
-      Loading(false)
+      setLoading(false)
     }
     load()
   }, [id])
