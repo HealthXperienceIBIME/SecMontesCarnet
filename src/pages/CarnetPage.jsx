@@ -408,7 +408,7 @@ export default function CarnetPage() {
       setParticipant(snap.exists() ? { id: snap.id, ...snap.data() } : false)
       Loading(false)
     }
-    Load()
+    load()
   }, [id])
 
   if (loading) return (
