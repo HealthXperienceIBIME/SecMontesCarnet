@@ -4,41 +4,28 @@ import { useParams } from 'react-router-dom'
 import { doc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase/config'
 
-const GEMINI_KEY = 'AQ.Ab8RN6LH-pjj99MuXxy5gY6Diu0WCdvr_S7gnJ96KscDrYbypw'
+const GEMINI_KEY = 'TU_GEMINI_API_KEY'
 
-async function generateWithGemini(prompt) {
-  // 1. Pasamos la API_KEY directamente como parámetro en la URL (?key=...)
-  // 2. Actualizamos el modelo a gemini-2.5-flash
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-
+async function gemini(prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { 
-          temperature: 0.8, 
-          maxOutputTokens: 2048 
-        }
-      })
-    });
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.8, maxOutputTokens: 1024 } })
+    })
+    if (!res.ok) return ''
+    const d = await res.json()
+    return d.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  } catch { return '' }
+}
 
-    if (!res.ok) {
-      const errorData = await res.json();
-      console.error('Error de la API de Gemini:', errorData);
-      return `Error en la IA: ${errorData.error?.message || 'No se pudo conectar'}`;
-    }
-
-    const data = await res.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sin respuesta';
-
-  } catch (error) {
-    console.error('Error de red/conexión:', error);
-    return 'Error de red al conectar con la IA.';
-  }
+function getIMCTipo(imc) {
+  if (!imc) return 'normal'
+  if (imc < 18.5) return 'bajo-peso'
+  if (imc <= 24.9) return 'normal'
+  if (imc <= 29.9) return 'sobrepeso'
+  return 'obesidad'
 }
 
 function IMC_COLOR(v) {
@@ -49,65 +36,133 @@ function IMC_COLOR(v) {
   return '#ef4444'
 }
 
+// ── TAB: Resultados ──────────────────────────────────────────────────────────
+
 function TabResultados({ p }) {
   const pr = p.pruebas || {}
+  const omitidas = p.pruebasOmitidas
+
   return (
     <div className="fade">
+      {omitidas && (
+        <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13, color: '#f59e0b', textAlign: 'center' }}>
+          ⏭️ Las pruebas físicas no fueron realizadas
+        </div>
+      )}
+
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 12 }}>Marcas Deportivas</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
           {[
-            ['Salto Cuerda', pr.saltoCuerda ?? '—', 'reps / 15s'],
-            ['Lanzamiento', pr.lanzamiento ?? '—', 'metros'],
-            ['Carrera 45m', pr.carrera ?? '—', 'segundos'],
+            ['Salto Cuerda', omitidas ? 'N/A' : (pr.saltoCuerda ?? '—'), 'reps / 15s'],
+            ['Lanzamiento', omitidas ? 'N/A' : (pr.lanzamiento ?? '—'), 'metros'],
+            ['Carrera 45m', omitidas ? 'N/A' : (pr.carrera ?? '—'), 'segundos'],
           ].map(([l, v, u]) => (
-            <div key={l} className="card" style={{ textAlign: 'center' }}>
+            <div key={l} className="card" style={{ textAlign: 'center', opacity: omitidas ? 0.5 : 1 }}>
               <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 8 }}>{l}</div>
-              <div className="stat" style={{ fontSize: 22, color: 'var(--gold)' }}>{v}</div>
+              <div className="stat" style={{ fontSize: 22, color: omitidas ? 'var(--text3)' : 'var(--gold)' }}>{v}</div>
               <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>{u}</div>
             </div>
           ))}
         </div>
       </div>
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 12 }}>Análisis Físico</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-          {[
-            ['Velocidad', pr.velocidad ?? '—', 'm/s', 'v = 45m/tiempo', 'var(--teal)'],
-            ['Aceleración', pr.aceleracion ?? '—', 'm/s²', 'a = v / t', 'var(--purple)'],
-            ['Fuerza', pr.fuerza ?? '—', 'N', 'F = masa × a', 'var(--gold)'],
-          ].map(([l, v, u, f, color]) => (
-            <div key={l} className="card" style={{ borderColor: color + '40', background: color + '08' }}>
-              <div style={{ fontSize: 20, marginBottom: 4 }}>{l === 'Velocidad' ? '⇒' : l === 'Aceleración' ? '⚡' : '💪'}</div>
-              <div className="stat" style={{ fontSize: 22, color }}>{v}</div>
-              <div style={{ fontWeight: 700, fontSize: 12, marginTop: 4 }}>{l}</div>
-              <div style={{ fontSize: 10, color: 'var(--text3)' }}>{u}</div>
-              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>{f}</div>
-            </div>
-          ))}
+
+      {!omitidas && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 12 }}>Análisis Físico</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+            {[
+              ['Velocidad', pr.velocidad ?? '—', 'm/s', 'v = 45m/tiempo', 'var(--teal)'],
+              ['Aceleración', pr.aceleracion ?? '—', 'm/s²', 'a = v / t', 'var(--purple)'],
+              ['Fuerza', pr.fuerza ?? '—', 'N', 'F = masa × a', 'var(--gold)'],
+            ].map(([l, v, u, f, color]) => (
+              <div key={l} className="card" style={{ borderColor: color + '40', background: color + '08' }}>
+                <div style={{ fontSize: 20, marginBottom: 4 }}>{l === 'Velocidad' ? '⇒' : l === 'Aceleración' ? '⚡' : '💪'}</div>
+                <div className="stat" style={{ fontSize: 22, color }}>{v}</div>
+                <div style={{ fontWeight: 700, fontSize: 12, marginTop: 4 }}>{l}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)' }}>{u}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>{f}</div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
 
+// ── TAB: Recomendaciones ─────────────────────────────────────────────────────
+
 function TabRecomendaciones({ p }) {
   const text = p.recomendaciones || ''
-  const renderMD = (t) => t.split('\n').map((line, i) => {
-    if (line.startsWith('## ')) {
-      const icon = line.includes('JARRA') ? '💧' : line.includes('PLATO') ? '🥗' : line.includes('DIETA') ? '📅' : '✨'
-      const colors = { '💧': 'var(--blue)', '🥗': 'var(--teal)', '📅': 'var(--purple)', '✨': 'var(--gold)' }
-      return <h3 key={i} style={{ color: colors[icon], fontFamily:'Space Grotesk', fontSize:13, fontWeight:700, marginTop:20, marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>{icon} {line.replace('## ','')}</h3>
-    }
-    const parts = line.split(/\*\*(.*?)\*\*/g)
-    if (!line.trim()) return <div key={i} style={{ height: 5 }} />
-    return <p key={i} style={{ marginBottom:5, color:'var(--text2)', lineHeight:1.7, fontSize:13 }}>
-      {parts.map((pp,j) => j%2===1 ? <strong key={j} style={{color:'var(--text)'}}>{pp}</strong> : pp)}
-    </p>
+  const tipo = getIMCTipo(p.imc)
+  const BASE = '/SecMontesCarnet'
+
+  const SECTIONS = {
+    'JARRA DEL BUEN BEBER': { icon: '💧', color: '#3b82f6', img: `${BASE}/jarra-${tipo}.png` },
+    'PLATO DEL BUEN COMER': { icon: '🥗', color: '#00d4a0', img: `${BASE}/plato-${tipo}.png` },
+    'DIETA SEMANAL': { icon: '📅', color: '#8b5cf6', img: null },
+    'RECOMENDACIONES GENERALES': { icon: '✨', color: '#f59e0b', img: null },
+  }
+
+  if (!text) return (
+    <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>
+      <div style={{ fontSize: 48, marginBottom: 12 }}>⏳</div>
+      Las recomendaciones aún no han sido generadas en la estación IA.
+    </div>
+  )
+
+  // Parse sections
+  const parsed = {}
+  let current = null
+  text.split('\n').forEach(line => {
+    const heading = line.replace('## ', '').trim()
+    if (SECTIONS[heading]) { current = heading; parsed[heading] = '' }
+    else if (current) parsed[current] += line + '\n'
   })
-  if (!text) return <div style={{ textAlign:'center', padding:40, color:'var(--text3)' }}>Las recomendaciones aún no han sido generadas en la estación IA.</div>
-  return <div className="fade" style={{ lineHeight:1.8 }}>{renderMD(text)}</div>
+
+  const renderLines = (content) => content.split('\n').filter(l => l.trim()).map((line, i) => {
+    const parts = line.split(/\*\*(.*?)\*\*/g)
+    return (
+      <p key={i} style={{ marginBottom: 6, color: 'var(--text2)', lineHeight: 1.7, fontSize: 13 }}>
+        {parts.map((pp, j) => j % 2 === 1 ? <strong key={j} style={{ color: 'var(--text)' }}>{pp}</strong> : pp)}
+      </p>
+    )
+  })
+
+  return (
+    <div className="fade">
+      {Object.entries(SECTIONS).map(([key, { icon, color, img }]) => (
+        <div key={key} style={{ marginBottom: 18, background: color + '08', border: `1px solid ${color}25`, borderRadius: 14, overflow: 'hidden' }}>
+          {/* Section header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: `1px solid ${color}20` }}>
+            <span style={{ fontSize: 20 }}>{icon}</span>
+            <h3 style={{ fontFamily: 'Space Grotesk', fontSize: 13, fontWeight: 700, color, margin: 0 }}>{key}</h3>
+          </div>
+
+          {/* Image if available */}
+          {img && (
+            <div style={{ padding: '16px 18px 0' }}>
+              <img
+                src={img}
+                alt={key}
+                style={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 10 }}
+                onError={e => e.target.style.display = 'none'}
+              />
+            </div>
+          )}
+
+          {/* Content */}
+          <div style={{ padding: '12px 18px 16px' }}>
+            {parsed[key] ? renderLines(parsed[key]) : <p style={{ color: 'var(--text3)', fontSize: 13 }}>Sin información</p>}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
+
+// ── TAB: Asesor IA ────────────────────────────────────────────────────────────
 
 function TabAsesorIA({ p }) {
   const [msgs, setMsgs] = useState([
@@ -125,9 +180,9 @@ function TabAsesorIA({ p }) {
     setInput('')
     setMsgs(prev => [...prev, { role: 'user', text: q }])
     setLoading(true)
-    const context = `Eres un asesor de salud y nutrición amigable para adolescentes. El participante se llama ${p.nombre}, tiene ${p.edad} años, sexo ${p.sexo}, peso ${p.peso}kg, altura ${p.altura}m, IMC ${p.imc ?? 'N/A'}. Pruebas: salto ${p.pruebas?.saltoCuerda ?? 0} reps, lanzamiento ${p.pruebas?.lanzamiento ?? 0}m, carrera ${p.pruebas?.carrera ?? 0}s. Responde en español, de forma amigable, breve y motivadora. Pregunta del usuario: ${q}`
+    const context = `Eres un asesor de salud y nutrición amigable. El participante se llama ${p.nombre}, tiene ${p.edad} años, sexo ${p.sexo}, peso ${p.peso}kg, altura ${p.altura}m, IMC ${p.imc ?? 'N/A'} (${p.imcStatus || 'Normal'}).${p.pruebas ? ` Pruebas: salto ${p.pruebas.saltoCuerda} reps, lanzamiento ${p.pruebas.lanzamiento}m, carrera ${p.pruebas.carrera}s.` : ' No realizó pruebas físicas.'} Responde en español, de forma amigable, breve y motivadora. Pregunta: ${q}`
     const ans = await gemini(context)
-    setMsgs(prev => [...prev, { role: 'ai', text: ans }])
+    setMsgs(prev => [...prev, { role: 'ai', text: ans || 'No pude generar una respuesta, intenta de nuevo.' }])
     setLoading(false)
   }
 
@@ -142,14 +197,20 @@ function TabAsesorIA({ p }) {
           <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
             {m.role === 'ai' && <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--teal-dim)', border: '1px solid var(--teal)', display:'flex',alignItems:'center',justifyContent:'center', marginRight: 8, flexShrink: 0, fontSize: 14 }}>💚</div>}
             <div style={{
-              maxWidth: '78%', padding: '10px 14px', borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+              maxWidth: '78%', padding: '10px 14px',
+              borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
               background: m.role === 'user' ? 'var(--teal-dim)' : 'var(--bg-secondary)',
               border: `1px solid ${m.role === 'user' ? 'var(--teal)' : 'var(--border)'}`,
               fontSize: 13, lineHeight: 1.6, color: 'var(--text)'
             }}>{m.text}</div>
           </div>
         ))}
-        {loading && <div style={{ display:'flex',gap:8,alignItems:'center' }}><div style={{ width:28,height:28,borderRadius:'50%',background:'var(--teal-dim)',border:'1px solid var(--teal)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14 }}>💚</div><span className="spin" /></div>}
+        {loading && (
+          <div style={{ display:'flex',gap:8,alignItems:'center' }}>
+            <div style={{ width:28,height:28,borderRadius:'50%',background:'var(--teal-dim)',border:'1px solid var(--teal)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14 }}>💚</div>
+            <span className="spin" />
+          </div>
+        )}
         <div ref={endRef} />
       </div>
       <div style={{ display: 'flex', gap: 10 }}>
@@ -162,6 +223,8 @@ function TabAsesorIA({ p }) {
     </div>
   )
 }
+
+// ── TAB: Simular ─────────────────────────────────────────────────────────────
 
 function TabSimular({ p }) {
   const [peso, setPeso] = useState(p.peso || 60)
@@ -184,7 +247,7 @@ function TabSimular({ p }) {
 
   const handleAnalyze = async () => {
     setAnalyzing(true)
-    const ans = await gemini(`El usuario ${p.nombre} simula cambiar su peso de ${p.peso}kg a ${simPeso}kg y su tiempo de 45m de ${p.pruebas?.carrera ?? '—'}s a ${simCarrera}s. Nuevo IMC: ${newIMC.toFixed(2)}. Nueva velocidad: ${simV.toFixed(2)}m/s, aceleración: ${simA.toFixed(2)}m/s², fuerza: ${simF.toFixed(2)}N. Analiza brevemente si estos cambios son saludables y cómo mejorar en 2-3 oraciones.`)
+    const ans = await gemini(`El usuario ${p.nombre} simula cambiar su peso de ${p.peso}kg a ${simPeso}kg y su tiempo de 45m de ${p.pruebas?.carrera ?? '—'}s a ${simCarrera}s. Nuevo IMC: ${newIMC.toFixed(2)} (${imcLabel}). Nueva velocidad: ${simV.toFixed(2)}m/s, aceleración: ${simA.toFixed(2)}m/s², fuerza: ${simF.toFixed(2)}N. Analiza brevemente si estos cambios son saludables y cómo mejorar. Responde en 2-3 oraciones en español.`)
     setAnalysis(ans)
     setAnalyzing(false)
   }
@@ -196,7 +259,9 @@ function TabSimular({ p }) {
         <span className="stat" style={{ color:'var(--teal)', fontSize:13 }}>{value}</span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(parseFloat(e.target.value))}
-        style={{ width:'100%', padding:0, height:6, background:`linear-gradient(to right,var(--teal) 0%,var(--teal) ${(value-min)/(max-min)*100}%,var(--border) ${(value-min)/(max-min)*100}%,var(--border) 100%)`, borderRadius:3, appearance:'none', cursor:'pointer' }} />
+        style={{ width:'100%', padding:0, height:6, borderRadius:3, appearance:'none', cursor:'pointer',
+          background:`linear-gradient(to right,var(--teal) 0%,var(--teal) ${(value-min)/(max-min)*100}%,var(--border) ${(value-min)/(max-min)*100}%,var(--border) 100%)`
+        }} />
       {current !== undefined && <div style={{ fontSize:10, color:'var(--text3)', marginTop:3 }}>Actual: {current}</div>}
     </div>
   )
@@ -205,12 +270,11 @@ function TabSimular({ p }) {
     <div className="fade">
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ fontWeight:700, color:'var(--teal)', marginBottom:14, fontSize:13 }}>⚖️ SIMULAR PESO Y ALTURA</div>
-        <p style={{ color:'var(--text2)', fontSize:12, marginBottom:16 }}>Ajusta tu peso y altura para calcular un nuevo IMC.</p>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:14 }}>
-          <Slider label="Peso" value={peso} min={30} max={150} step={0.5} onChange={setPeso} current={`${p.peso} kg`} />
-          <Slider label="Altura" value={altura} min={1.0} max={2.2} step={0.01} onChange={setAltura} current={`${p.altura} m`} />
+          <Slider label={`Peso (kg)`} value={peso} min={30} max={150} step={0.5} onChange={setPeso} current={`${p.peso} kg`} />
+          <Slider label={`Altura (m)`} value={altura} min={1.0} max={2.2} step={0.01} onChange={setAltura} current={`${p.altura} m`} />
         </div>
-        <div style={{ padding:16, background: imcOk ? 'var(--teal-dim)' : 'var(--gold-dim)', border:`1px solid ${imcColor}`, borderRadius:10, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <div style={{ padding:16, background: imcOk ? 'var(--teal-dim)' : 'rgba(245,158,11,0.1)', border:`1px solid ${imcColor}`, borderRadius:10, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div>
             <div className="stat" style={{ fontSize:28, color:imcColor }}>{newIMC.toFixed(2)}</div>
             <div style={{ color:imcColor, fontWeight:600, fontSize:13 }}>{imcLabel}</div>
@@ -218,44 +282,53 @@ function TabSimular({ p }) {
           {imcOk && <span style={{ color:'var(--teal)', fontSize:13, fontWeight:600 }}>✓ Saludable</span>}
         </div>
       </div>
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div style={{ fontWeight:700, color:'var(--purple)', marginBottom:14, fontSize:13 }}>✨ SIMULAR RENDIMIENTO</div>
-        <p style={{ color:'var(--text2)', fontSize:12, marginBottom:16 }}>Ajusta los parámetros para ver cómo cambiarían tus métricas.</p>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
-          <Slider label="Cambio de peso" value={deltaPeso} min={-20} max={20} step={0.5} onChange={setDeltaPeso} />
-          <Slider label="Cambio de tiempo" value={deltaT} min={-10} max={10} step={0.1} onChange={setDeltaT} />
-        </div>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-          <thead>
-            <tr style={{ borderBottom:'1px solid var(--border)' }}>
-              {['Métrica','Actual','→','Simulado'].map(h => <th key={h} style={{ padding:'8px 0', textAlign: h==='Simulado'?'right':'left', color:'var(--text2)', fontWeight:600, fontSize:11 }}>{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              ['Velocidad', `${p.pruebas?.velocidad ?? '—'}`, `${simV.toFixed(2)} m/s`],
-              ['Aceleración', `${p.pruebas?.aceleracion ?? '—'}`, `${simA.toFixed(2)} m/s²`],
-              ['Fuerza', `${p.pruebas?.fuerza ?? '—'}`, `${simF.toFixed(2)} N`],
-              ['IMC', `${p.imc?.toFixed(2) ?? '—'}`, newIMC.toFixed(2)],
-            ].map(([m,a,s]) => (
-              <tr key={m} style={{ borderBottom:'1px solid var(--border)' }}>
-                <td style={{ padding:'10px 0', color:'var(--text2)' }}>{m}</td>
-                <td style={{ padding:'10px 0', fontWeight:600 }}>{a}</td>
-                <td style={{ padding:'10px 0', color:'var(--text3)' }}>—</td>
-                <td style={{ padding:'10px 0', textAlign:'right', fontWeight:700, color:'var(--teal)' }}>{s}</td>
+
+      {p.pruebas && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div style={{ fontWeight:700, color:'var(--purple)', marginBottom:14, fontSize:13 }}>✨ SIMULAR RENDIMIENTO</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+            <Slider label="Cambio de peso" value={deltaPeso} min={-20} max={20} step={0.5} onChange={setDeltaPeso} />
+            <Slider label="Cambio de tiempo" value={deltaT} min={-10} max={10} step={0.1} onChange={setDeltaT} />
+          </div>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+            <thead>
+              <tr style={{ borderBottom:'1px solid var(--border)' }}>
+                {['Métrica','Actual','→','Simulado'].map(h => <th key={h} style={{ padding:'8px 0', textAlign: h==='Simulado'?'right':'left', color:'var(--text2)', fontWeight:600, fontSize:11 }}>{h}</th>)}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {[
+                ['Velocidad', `${p.pruebas?.velocidad ?? '—'}`, `${simV.toFixed(2)} m/s`],
+                ['Aceleración', `${p.pruebas?.aceleracion ?? '—'}`, `${simA.toFixed(2)} m/s²`],
+                ['Fuerza', `${p.pruebas?.fuerza ?? '—'}`, `${simF.toFixed(2)} N`],
+                ['IMC', `${p.imc?.toFixed(2) ?? '—'}`, newIMC.toFixed(2)],
+              ].map(([m,a,s]) => (
+                <tr key={m} style={{ borderBottom:'1px solid var(--border)' }}>
+                  <td style={{ padding:'10px 0', color:'var(--text2)' }}>{m}</td>
+                  <td style={{ padding:'10px 0', fontWeight:600 }}>{a}</td>
+                  <td style={{ padding:'10px 0', color:'var(--text3)' }}>—</td>
+                  <td style={{ padding:'10px 0', textAlign:'right', fontWeight:700, color:'var(--teal)' }}>{s}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <button onClick={handleAnalyze} disabled={analyzing}
-        style={{ width:'100%', padding:14, background:'linear-gradient(90deg,#00d4a0,#8b5cf6)', color:'#fff', borderRadius:10, fontSize:14, display:'flex',alignItems:'center',justifyContent:'center',gap:10 }}>
+        style={{ width:'100%', padding:14, background:'linear-gradient(90deg,#00d4a0,#8b5cf6)', color:'#fff', borderRadius:10, fontSize:14, display:'flex',alignItems:'center',justifyContent:'center',gap:10, border:'none', cursor:'pointer' }}>
         {analyzing ? <><span className="spin" style={{width:16,height:16}} /> Analizando...</> : '✨ Analizar cambios con IA'}
       </button>
-      {analysis && <div className="card" style={{ marginTop:14, borderColor:'var(--teal)', fontSize:13, color:'var(--text2)', lineHeight:1.7 }}>{analysis}</div>}
+      {analysis && (
+        <div className="card" style={{ marginTop:14, borderColor:'var(--teal)', fontSize:13, color:'var(--text2)', lineHeight:1.7 }}>
+          {analysis}
+        </div>
+      )}
     </div>
   )
 }
+
+// ── Main Carnet Page ──────────────────────────────────────────────────────────
 
 export default function CarnetPage() {
   const { qrId } = useParams()
@@ -316,6 +389,11 @@ export default function CarnetPage() {
               <div style={{ fontWeight:700, fontSize:18 }}>{p.nombre}</div>
               <div style={{ color:'var(--text2)', fontSize:12 }}>{p.edad} años · {p.sexo}</div>
               <div style={{ color:'var(--text3)', fontSize:11 }}>QR: {p.id} · Grupo: {p.grupo}</div>
+              {p.presentacionLabel && (
+                <div style={{ display:'inline-block', marginTop:4, background:'var(--teal-dim)', color:'var(--teal)', padding:'2px 8px', borderRadius:20, fontSize:10, fontWeight:600 }}>
+                  📅 {p.presentacionLabel}
+                </div>
+              )}
             </div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:8 }}>
