@@ -21,7 +21,7 @@ export default function App() {
     <BrowserRouter basename="/SecMontesCarnet">
       <RedirectHandler />
       <Routes>
-        <Route path="/" element={<Navigate to="/HX-IBIME-001" />} />
+       <Route path="/" element={<NotFound />} />
         <Route path="/:qrId" element={<CarnetPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
