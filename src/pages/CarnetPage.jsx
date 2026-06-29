@@ -7,65 +7,41 @@ import { db } from '../firebase/config'
 // ⚠️ REEMPLAZA CON TU LLAVE DE GEMINI REAL
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY
 
-/**
- * Función optimizada para obtener respuestas con Streaming (efecto máquina de escribir en tiempo real).
- * @param {string} prompt - El texto que se le envía a la IA
- * @param {function} onChunk - Callback que recibe cada fragmento de texto conforme llega
- */
 async function geminiStream(prompt, onChunk) {
-  // Usamos el endpoint "streamGenerateContent" para activar la transmisión en tiempo real
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=${GEMINI_KEY}`;
-  
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=${GEMINI_KEY}`
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 1024 } 
+        generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
       })
-    });
-
-    if (!res.ok) return;
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
-
+    })
+    if (!res.ok) return
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
     while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      
-      buffer += decoder.decode(value, { stream: true });
-      
-      // La API de Google envía estructuras JSON separadas por comas/llaves en líneas o bloques.
-      // Este bloque procesa los fragmentos de texto conforme van llegando de manera limpia.
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
       try {
-        // Buscamos los bloques de texto generados por Gemini dentro del stream
-        const regex = /"text":\s*"((?:[^"\\]|\\.)*)"/g;
-        let match;
-        let textChunk = '';
-        
+        const regex = /"text":\s*"((?:[^"\\]|\\.)*)"/g
+        let match
+        let textChunk = ''
         while ((match = regex.exec(buffer)) !== null) {
-          // Evaluamos el string para limpiar escapes como \n o \"
-          try {
-            textChunk += JSON.parse(`"${match[1]}"`);
-          } catch {
-            textChunk += match[1];
-          }
+          try { textChunk += JSON.parse(`"${match[1]}"`) }
+          catch { textChunk += match[1] }
         }
-        
         if (textChunk) {
-          onChunk(textChunk);
-          // Limpiamos el buffer procesado para evitar duplicados en la siguiente iteración
-          buffer = buffer.substring(buffer.lastIndexOf('}') + 1);
+          onChunk(textChunk)
+          buffer = buffer.substring(buffer.lastIndexOf('}') + 1)
         }
-      } catch (e) {
-        // Si el JSON está incompleto en ese instante, espera al siguiente chunk
-      }
+      } catch (e) {}
     }
   } catch (error) {
-    console.error("Error en Gemini Stream:", error);
+    console.error('Error en Gemini Stream:', error)
   }
 }
 
@@ -89,7 +65,6 @@ function IMC_COLOR(v) {
 function TabResultados({ p }) {
   const pr = p.pruebas || {}
   const omitidas = p.pruebasOmitidas
-
   return (
     <div className="fade">
       {omitidas && (
@@ -97,7 +72,6 @@ function TabResultados({ p }) {
           ⏭️ Las pruebas físicas no fueron realizadas
         </div>
       )}
-
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 12 }}>Marcas Deportivas</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
@@ -114,7 +88,6 @@ function TabResultados({ p }) {
           ))}
         </div>
       </div>
-
       {!omitidas && (
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 12 }}>Análisis Físico</div>
@@ -141,6 +114,7 @@ function TabResultados({ p }) {
 
 // ── TAB: Recomendaciones ─────────────────────────────────────────────────────
 function TabRecomendaciones({ p }) {
+  const [imgExpanded, setImgExpanded] = useState(null)
   const text = p.recomendaciones || ''
   const tipo = getIMCTipo(p.imc)
   const BASE = '/SecMontesCarnet'
@@ -178,6 +152,17 @@ function TabRecomendaciones({ p }) {
 
   return (
     <div className="fade">
+      {/* Modal imagen expandida */}
+      {imgExpanded && (
+        <div onClick={() => setImgExpanded(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20, cursor: 'zoom-out' }}>
+          <img src={imgExpanded} alt="Expandida"
+            style={{ maxWidth: '100%', maxHeight: '90vh', objectFit: 'contain', borderRadius: 16, boxShadow: '0 0 60px rgba(0,212,160,0.3)' }} />
+          <div style={{ position: 'absolute', top: 20, right: 24, color: '#fff', fontSize: 32, fontWeight: 700, cursor: 'pointer' }}>✕</div>
+          <div style={{ position: 'absolute', bottom: 20, color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Toca en cualquier lugar para cerrar</div>
+        </div>
+      )}
+
       {Object.entries(SECTIONS).map(([key, { icon, color, img }]) => (
         <div key={key} style={{ marginBottom: 18, background: color + '08', border: `1px solid ${color}25`, borderRadius: 14, overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: `1px solid ${color}20` }}>
@@ -190,9 +175,15 @@ function TabRecomendaciones({ p }) {
               <img
                 src={img}
                 alt={key}
-                style={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 10 }}
+                onClick={() => setImgExpanded(img)}
+                style={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 10, cursor: 'zoom-in', transition: 'transform 0.2s' }}
+                onMouseOver={e => e.target.style.transform = 'scale(1.02)'}
+                onMouseOut={e => e.target.style.transform = 'scale(1)'}
                 onError={e => e.target.style.display = 'none'}
               />
+              <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
+                👆 Toca la imagen para ampliar
+              </div>
             </div>
           )}
 
@@ -205,7 +196,7 @@ function TabRecomendaciones({ p }) {
   )
 }
 
-// ── TAB: Asesor IA (CON RENDIMIENTO VELOZ MEDIANTE STREAMING) ─────────────────
+// ── TAB: Asesor IA ────────────────────────────────────────────────────────────
 function TabAsesorIA({ p }) {
   const [msgs, setMsgs] = useState([
     { role: 'ai', text: `¡Hola ${p.nombre}! 👋 Soy tu asesor de salud con IA. Conozco tus datos físicos y puedo darte recomendaciones personalizadas basadas en el Plato del Buen Comer, la Jarra del Buen Beber y consejos de entrenamiento. ¿En qué puedo ayudarte?` }
@@ -219,26 +210,21 @@ function TabAsesorIA({ p }) {
   const send = async () => {
     const q = input.trim()
     if (!q || loading) return
-    
     setInput('')
-    // Agregamos la pregunta del usuario y creamos un mensaje vacío para la IA que llenaremos progresivamente
     setMsgs(prev => [...prev, { role: 'user', text: q }, { role: 'ai', text: '' }])
     setLoading(true)
-    
-    const context = `Eres un asesor de salud y nutrición amigable para adolescentes mexicanos. El participante se llama ${p.nombre}, tiene ${p.edad} años, sexo ${p.sexo}, peso ${p.peso}kg, altura ${p.altura}m, IMC ${p.imc ?? 'N/A'} (${p.imcStatus || 'Normal'}).${p.pruebas ? ` Pruebas: salto ${p.pruebas.saltoCuerda} reps, lanzamiento ${p.pruebas.lanzamiento}m, carrera ${p.pruebas.carrera}s.` : ' No realizó pruebas físicas.'} Responde en español de forma amigable, breve (máximo 3 líneas) y motivadora. Pregunta: ${q}`;
-    
-    // Llamamos a la nueva función de Streaming
-    await geminiStream(context, (textAcumulado) => {
+    const context = `Eres un asesor de salud y nutrición amigable para adolescentes mexicanos. El participante se llama ${p.nombre}, tiene ${p.edad} años, sexo ${p.sexo}, peso ${p.peso}kg, altura ${p.altura}m, IMC ${p.imc ?? 'N/A'} (${p.imcStatus || 'Normal'}).${p.pruebas ? ` Pruebas: salto ${p.pruebas.saltoCuerda} reps, lanzamiento ${p.pruebas.lanzamiento}m, carrera ${p.pruebas.carrera}s.` : ' No realizó pruebas físicas.'} Responde en español de forma amigable, breve (máximo 3 líneas) y motivadora. Pregunta: ${q}`
+    let acumulado = ''
+    await geminiStream(context, (chunk) => {
+      acumulado += chunk
       setMsgs(prev => {
-        const actualizados = [...prev];
-        // Modificamos el último elemento (que pertenece a la IA) en tiempo real
-        actualizados[actualizados.length - 1] = { role: 'ai', text: textAcumulado };
-        return actualizados;
-      });
-      setLoading(false); // Desactivamos el spinner en cuanto empiezan a salir las letras
-    });
-    
-    setLoading(false);
+        const updated = [...prev]
+        updated[updated.length - 1] = { role: 'ai', text: acumulado }
+        return updated
+      })
+      setLoading(false)
+    })
+    setLoading(false)
   }
 
   return (
@@ -249,12 +235,12 @@ function TabAsesorIA({ p }) {
       </div>
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
         {msgs.map((m, i) => {
-          // No renderizar burbujas vacías que ocurran durante el primer milisegundo de carga
-          if (m.role === 'ai' && !m.text && loading) return null;
-          
+          if (m.role === 'ai' && !m.text && loading) return null
           return (
             <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-              {m.role === 'ai' && <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--teal-dim)', border: '1px solid var(--teal)', display:'flex',alignItems:'center',justifyContent:'center', marginRight: 8, flexShrink: 0, fontSize: 14 }}>💚</div>}
+              {m.role === 'ai' && (
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--teal-dim)', border: '1px solid var(--teal)', display:'flex',alignItems:'center',justifyContent:'center', marginRight: 8, flexShrink: 0, fontSize: 14 }}>💚</div>
+              )}
               <div style={{
                 maxWidth: '78%', padding: '10px 14px',
                 borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
@@ -284,7 +270,7 @@ function TabAsesorIA({ p }) {
   )
 }
 
-// ── TAB: Simular (CON RESPUESTA VELOZ MEDIANTE STREAMING) ─────────────────────
+// ── TAB: Simular ─────────────────────────────────────────────────────────────
 function TabSimular({ p }) {
   const [peso, setPeso] = useState(p.peso || 60)
   const [altura, setAltura] = useState(p.altura || 1.6)
@@ -306,15 +292,14 @@ function TabSimular({ p }) {
 
   const handleAnalyze = async () => {
     setAnalyzing(true)
-    setAnalysis('') // Limpiamos análisis anterior
-    
-    const prompt = `El usuario ${p.nombre} simula cambiar su peso de ${p.peso}kg a ${simPeso}kg y su tiempo de 45m de ${p.pruebas?.carrera ?? '—'}s a ${simCarrera}s. Nuevo IMC: ${newIMC.toFixed(2)} (${imcLabel}). Nueva velocidad: ${simV.toFixed(2)}m/s, aceleración: ${simA.toFixed(2)}m/s², fuerza: ${simF.toFixed(2)}N. Analiza de manera súper breve si estos cambios son saludables y cómo mejorar. Responde en máximo 2 oraciones concisas en español.`;
-    
-    await geminiStream(prompt, (textAcumulado) => {
-      setAnalysis(textAcumulado);
-      setAnalyzing(false); // Apagamos animación de carga apenas empiece a responder
-    });
-    
+    setAnalysis('')
+    let acumulado = ''
+    const prompt = `El usuario ${p.nombre} simula cambiar su peso de ${p.peso}kg a ${simPeso}kg y su tiempo de 45m de ${p.pruebas?.carrera ?? '—'}s a ${simCarrera}s. Nuevo IMC: ${newIMC.toFixed(2)} (${imcLabel}). Nueva velocidad: ${simV.toFixed(2)}m/s, aceleración: ${simA.toFixed(2)}m/s², fuerza: ${simF.toFixed(2)}N. Analiza de manera breve si estos cambios son saludables y cómo mejorar. Responde en máximo 2 oraciones en español.`
+    await geminiStream(prompt, (chunk) => {
+      acumulado += chunk
+      setAnalysis(acumulado)
+      setAnalyzing(false)
+    })
     setAnalyzing(false)
   }
 
@@ -337,8 +322,8 @@ function TabSimular({ p }) {
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ fontWeight:700, color:'var(--teal)', marginBottom:14, fontSize:13 }}>⚖️ SIMULAR PESO Y ALTURA</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:14 }}>
-          <Slider label={`Peso (kg)`} value={peso} min={30} max={150} step={0.5} onChange={setPeso} current={`${p.peso} kg`} />
-          <Slider label={`Altura (m)`} value={altura} min={1.0} max={2.2} step={0.01} onChange={setAltura} current={`${p.altura} m`} />
+          <Slider label="Peso (kg)" value={peso} min={30} max={150} step={0.5} onChange={setPeso} current={`${p.peso} kg`} />
+          <Slider label="Altura (m)" value={altura} min={1.0} max={2.2} step={0.01} onChange={setAltura} current={`${p.altura} m`} />
         </div>
         <div style={{ padding:16, background: imcOk ? 'var(--teal-dim)' : 'rgba(245,158,11,0.1)', border:`1px solid ${imcColor}`, borderRadius:10, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div>
