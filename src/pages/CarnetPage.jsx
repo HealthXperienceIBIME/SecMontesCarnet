@@ -211,7 +211,7 @@ function TabRecomendaciones({ p }) {
   )
 }
 
-// ── TAB: Asesor IA ────────────────────────────────────────────────────────────
+// ── TAB: Asesor IA (FIX: saludo solo una vez) ─────────────────────────────────
 function TabAsesorIA({ p }) {
   const [msgs, setMsgs] = useState([
     { role: 'ai', text: `¡Hola ${p.nombre}! 👋 Soy tu asesor de salud con IA. Conozco tus datos físicos y puedo darte recomendaciones personalizadas basadas en el Plato del Buen Comer, la Jarra del Buen Beber y consejos de entrenamiento. ¿En qué puedo ayudarte?` }
@@ -219,6 +219,7 @@ function TabAsesorIA({ p }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const endRef = useRef(null)
+  const isFirstMessage = useRef(true)
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
 
@@ -229,11 +230,24 @@ function TabAsesorIA({ p }) {
     setMsgs(prev => [...prev, { role: 'user', text: q }, { role: 'ai', text: '' }])
     setLoading(true)
 
-    const context = `Eres un asesor de salud y nutrición amigable para adolescentes mexicanos. 
+    // Construye el historial completo de la conversación para dar contexto continuo
+    const historialPrevio = msgs.map(m => `${m.role === 'user' ? 'Usuario' : 'Asesor'}: ${m.text}`).join('\n')
+
+    const context = isFirstMessage.current
+      ? `Eres un asesor de salud y nutrición amigable para adolescentes mexicanos.
 El participante se llama ${p.nombre}, tiene ${p.edad} años, sexo ${p.sexo}, peso ${p.peso}kg, altura ${p.altura}m, IMC ${p.imc ?? 'N/A'} (${p.imcStatus || 'Normal'}).
 ${p.pruebas ? `Pruebas físicas: salto ${p.pruebas.saltoCuerda} reps en 15s, lanzamiento ${p.pruebas.lanzamiento}m, carrera 45m en ${p.pruebas.carrera}s.` : 'No realizó pruebas físicas.'}
-Responde en español de forma amigable, breve (máximo 3 oraciones) y motivadora.
+IMPORTANTE: Esta es la PRIMERA pregunta de la conversación. Responde en español de forma amigable, breve (máximo 3 oraciones) y motivadora. NO vuelvas a saludar ni a presentarte en futuras respuestas.
 Pregunta del usuario: ${q}`
+      : `Continúa la conversación como asesor de salud, SIN saludar de nuevo ni repetir tu presentación (ya te presentaste antes).
+Datos del participante: ${p.nombre}, ${p.edad} años, IMC ${p.imc ?? 'N/A'} (${p.imcStatus || 'Normal'}).
+Historial reciente:
+${historialPrevio}
+
+Responde directo a la nueva pregunta, en español, breve (máximo 3 oraciones), sin saludo ni presentación.
+Nueva pregunta: ${q}`
+
+    isFirstMessage.current = false
 
     await geminiStream(context, (acumulado) => {
       setMsgs(prev => {
@@ -312,7 +326,7 @@ function TabSimular({ p }) {
   const handleAnalyze = async () => {
     setAnalyzing(true)
     setAnalysis('')
-    const prompt = `El usuario ${p.nombre} simula cambiar su peso de ${p.peso}kg a ${simPeso}kg y su tiempo de 45m de ${p.pruebas?.carrera ?? '—'}s a ${simCarrera.toFixed(2)}s. Nuevo IMC: ${newIMC.toFixed(2)} (${imcLabel}). Nueva velocidad: ${simV.toFixed(2)}m/s, aceleración: ${simA.toFixed(2)}m/s², fuerza: ${simF.toFixed(2)}N. Analiza brevemente si estos cambios son saludables y cómo mejorar. Máximo 2 oraciones en español.`
+    const prompt = `El usuario ${p.nombre} simula cambiar su peso de ${p.peso}kg a ${simPeso}kg y su tiempo de 45m de ${p.pruebas?.carrera ?? '—'}s a ${simCarrera.toFixed(2)}s. Nuevo IMC: ${newIMC.toFixed(2)} (${imcLabel}). Nueva velocidad: ${simV.toFixed(2)}m/s, aceleración: ${simA.toFixed(2)}m/s², fuerza: ${simF.toFixed(2)}N. Analiza brevemente si estos cambios son saludables y cómo mejorar. Máximo 2 oraciones en español, sin saludar.`
     await geminiStream(prompt, (acumulado) => {
       setAnalysis(acumulado)
       if (analyzing) setAnalyzing(false)
@@ -320,29 +334,17 @@ function TabSimular({ p }) {
     setAnalyzing(false)
   }
 
-  // Slider táctil — funciona con drag en móvil y desktop
   const sliderRef = useRef(null)
-  const isDragging = useRef(false)
 
-  const makeSliderProps = (min, max, step, value, onChange) => {
-    const getValueFromEvent = (e) => {
-      const rect = sliderRef.current?.getBoundingClientRect?.() || e.target.getBoundingClientRect()
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX
-      const pct = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1)
-      const raw = min + pct * (max - min)
-      const stepped = Math.round(raw / step) * step
-      return Math.min(Math.max(parseFloat(stepped.toFixed(2)), min), max)
+  const makeSliderProps = (min, max, step, value, onChange) => ({
+    type: 'range', min, max, step, value,
+    onChange: e => onChange(parseFloat(e.target.value)),
+    style: {
+      width: '100%', padding: 0, height: 6, borderRadius: 3,
+      appearance: 'none', cursor: 'pointer', touchAction: 'none',
+      background: `linear-gradient(to right,var(--teal) 0%,var(--teal) ${(value-min)/(max-min)*100}%,var(--border) ${(value-min)/(max-min)*100}%,var(--border) 100%)`
     }
-    return {
-      type: 'range', min, max, step, value,
-      onChange: e => onChange(parseFloat(e.target.value)),
-      style: {
-        width: '100%', padding: 0, height: 6, borderRadius: 3,
-        appearance: 'none', cursor: 'pointer', touchAction: 'none',
-        background: `linear-gradient(to right,var(--teal) 0%,var(--teal) ${(value-min)/(max-min)*100}%,var(--border) ${(value-min)/(max-min)*100}%,var(--border) 100%)`
-      }
-    }
-  }
+  })
 
   return (
     <div className="fade">
@@ -470,11 +472,11 @@ export default function CarnetPage() {
     <div className="grid-bg" style={{ minHeight:'100vh', padding:'20px 16px' }}>
       <div style={{ maxWidth: 700, margin: '0 auto' }}>
 
-        {/* Header */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-          <img src="/SecMontesCarnet/logo-hx.png" alt="HealthXperience" style={{ height: 36, objectFit: 'contain' }} />
+        {/* Header - LOGOS MÁS GRANDES */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
+          <img src="/SecMontesCarnet/logo-hx.png" alt="HealthXperience" style={{ height: 56, objectFit: 'contain' }} />
           <span style={{ fontSize:11, fontWeight:700, letterSpacing:1.5, color:'var(--text3)', textTransform:'uppercase' }}>Carnet Digital</span>
-          <img src="/SecMontesCarnet/logo-ibime.png" alt="IBIME" style={{ height: 32, objectFit: 'contain' }} />
+          <img src="/SecMontesCarnet/logo-ibime.png" alt="IBIME" style={{ height: 48, objectFit: 'contain' }} />
         </div>
 
         {/* Profile card */}
