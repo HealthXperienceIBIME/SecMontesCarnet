@@ -4,7 +4,6 @@ import { useParams } from 'react-router-dom'
 import { doc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase/config'
 
-// ⚠️ REEMPLAZA CON TU LLAVE DE GEMINI REAL
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY
 
 async function geminiStream(prompt, onChunk) {
@@ -22,6 +21,7 @@ async function geminiStream(prompt, onChunk) {
     const reader = res.body.getReader()
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
+    let acumulado = ''
     while (true) {
       const { value, done } = await reader.read()
       if (done) break
@@ -29,19 +29,20 @@ async function geminiStream(prompt, onChunk) {
       try {
         const regex = /"text":\s*"((?:[^"\\]|\\.)*)"/g
         let match
-        let textChunk = ''
+        let chunk = ''
         while ((match = regex.exec(buffer)) !== null) {
-          try { textChunk += JSON.parse(`"${match[1]}"`) }
-          catch { textChunk += match[1] }
+          try { chunk += JSON.parse(`"${match[1]}"`) }
+          catch { chunk += match[1] }
         }
-        if (textChunk) {
-          onChunk(textChunk)
+        if (chunk) {
+          acumulado += chunk
+          onChunk(acumulado)
           buffer = buffer.substring(buffer.lastIndexOf('}') + 1)
         }
       } catch (e) {}
     }
   } catch (error) {
-    console.error('Error en Gemini Stream:', error)
+    console.error('Error Gemini Stream:', error)
   }
 }
 
@@ -113,17 +114,50 @@ function TabResultados({ p }) {
 }
 
 // ── TAB: Recomendaciones ─────────────────────────────────────────────────────
+const SECTION_KEYS = ['JARRA DEL BUEN BEBER', 'PLATO DEL BUEN COMER', 'DIETA SEMANAL', 'RECOMENDACIONES GENERALES']
+const SECTION_META = {
+  'JARRA DEL BUEN BEBER':      { icon: '💧', color: '#3b82f6' },
+  'PLATO DEL BUEN COMER':      { icon: '🥗', color: '#00d4a0' },
+  'DIETA SEMANAL':             { icon: '📅', color: '#8b5cf6' },
+  'RECOMENDACIONES GENERALES': { icon: '✨', color: '#f59e0b' },
+}
+
+function parseText(text) {
+  const result = {}
+  SECTION_KEYS.forEach(k => { result[k] = '' })
+  let current = null
+  text.split('\n').forEach(line => {
+    const trimmed = line.replace(/^##\s*/, '').trim()
+    if (SECTION_KEYS.includes(trimmed)) { current = trimmed }
+    else if (current) result[current] += line + '\n'
+  })
+  return result
+}
+
+function RenderLines({ content }) {
+  const lines = content.split('\n').filter(l => l.trim())
+  if (!lines.length) return <p style={{ color: 'var(--text3)', fontSize: 13, fontStyle: 'italic' }}>Sin información</p>
+  return <>
+    {lines.map((line, i) => {
+      const parts = line.split(/\*\*(.*?)\*\*/g)
+      return (
+        <p key={i} style={{ marginBottom: 6, color: 'var(--text2)', lineHeight: 1.7, fontSize: 13 }}>
+          {parts.map((pp, j) => j % 2 === 1 ? <strong key={j} style={{ color: 'var(--text)' }}>{pp}</strong> : pp)}
+        </p>
+      )
+    })}
+  </>
+}
+
 function TabRecomendaciones({ p }) {
   const [imgExpanded, setImgExpanded] = useState(null)
   const text = p.recomendaciones || ''
   const tipo = getIMCTipo(p.imc)
   const BASE = '/SecMontesCarnet'
 
-  const SECTIONS = {
-    'JARRA DEL BUEN BEBER': { icon: '💧', color: '#3b82f6', img: `${BASE}/jarra-${tipo}.png` },
-    'PLATO DEL BUEN COMER': { icon: '🥗', color: '#00d4a0', img: `${BASE}/plato-${tipo}.png` },
-    'DIETA SEMANAL': { icon: '📅', color: '#8b5cf6', img: null },
-    'RECOMENDACIONES GENERALES': { icon: '✨', color: '#f59e0b', img: null },
+  const imgs = {
+    'JARRA DEL BUEN BEBER': `${BASE}/jarra-${tipo}.png`,
+    'PLATO DEL BUEN COMER': `${BASE}/plato-${tipo}.png`,
   }
 
   if (!text) return (
@@ -133,65 +167,46 @@ function TabRecomendaciones({ p }) {
     </div>
   )
 
-  const parsed = {}
-  let current = null
-  text.split('\n').forEach(line => {
-    const heading = line.replace('## ', '').trim()
-    if (SECTIONS[heading]) { current = heading; parsed[heading] = '' }
-    else if (current) parsed[current] += line + '\n'
-  })
-
-  const renderLines = (content) => content.split('\n').filter(l => l.trim()).map((line, i) => {
-    const parts = line.split(/\*\*(.*?)\*\*/g)
-    return (
-      <p key={i} style={{ marginBottom: 6, color: 'var(--text2)', lineHeight: 1.7, fontSize: 13 }}>
-        {parts.map((pp, j) => j % 2 === 1 ? <strong key={j} style={{ color: 'var(--text)' }}>{pp}</strong> : pp)}
-      </p>
-    )
-  })
+  const parsed = parseText(text)
 
   return (
     <div className="fade">
-      {/* Modal imagen expandida */}
       {imgExpanded && (
         <div onClick={() => setImgExpanded(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20, cursor: 'zoom-out' }}>
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20, cursor: 'zoom-out' }}>
           <img src={imgExpanded} alt="Expandida"
             style={{ maxWidth: '100%', maxHeight: '90vh', objectFit: 'contain', borderRadius: 16, boxShadow: '0 0 60px rgba(0,212,160,0.3)' }} />
-          <div style={{ position: 'absolute', top: 20, right: 24, color: '#fff', fontSize: 32, fontWeight: 700, cursor: 'pointer' }}>✕</div>
-          <div style={{ position: 'absolute', bottom: 20, color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Toca en cualquier lugar para cerrar</div>
+          <div style={{ position: 'absolute', top: 20, right: 24, color: '#fff', fontSize: 32, fontWeight: 700 }}>✕</div>
+          <div style={{ position: 'absolute', bottom: 20, color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Toca para cerrar</div>
         </div>
       )}
 
-      {Object.entries(SECTIONS).map(([key, { icon, color, img }]) => (
-        <div key={key} style={{ marginBottom: 18, background: color + '08', border: `1px solid ${color}25`, borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: `1px solid ${color}20` }}>
-            <span style={{ fontSize: 20 }}>{icon}</span>
-            <h3 style={{ fontFamily: 'Space Grotesk', fontSize: 13, fontWeight: 700, color, margin: 0 }}>{key}</h3>
-          </div>
-
-          {img && (
-            <div style={{ padding: '16px 18px 0' }}>
-              <img
-                src={img}
-                alt={key}
-                onClick={() => setImgExpanded(img)}
-                style={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 10, cursor: 'zoom-in', transition: 'transform 0.2s' }}
-                onMouseOver={e => e.target.style.transform = 'scale(1.02)'}
-                onMouseOut={e => e.target.style.transform = 'scale(1)'}
-                onError={e => e.target.style.display = 'none'}
-              />
-              <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
-                👆 Toca la imagen para ampliar
-              </div>
+      {SECTION_KEYS.map(key => {
+        const { icon, color } = SECTION_META[key]
+        const img = imgs[key]
+        return (
+          <div key={key} style={{ marginBottom: 18, background: color + '08', border: `1px solid ${color}25`, borderRadius: 14, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: `1px solid ${color}20` }}>
+              <span style={{ fontSize: 20 }}>{icon}</span>
+              <h3 style={{ fontFamily: 'Space Grotesk', fontSize: 13, fontWeight: 700, color, margin: 0 }}>{key}</h3>
             </div>
-          )}
-
-          <div style={{ padding: '12px 18px 16px' }}>
-            {parsed[key] ? renderLines(parsed[key]) : <p style={{ color: 'var(--text3)', fontSize: 13 }}>Sin información</p>}
+            {img && (
+              <div style={{ padding: '16px 18px 0' }}>
+                <img src={img} alt={key}
+                  onClick={() => setImgExpanded(img)}
+                  style={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 10, cursor: 'zoom-in', transition: 'transform 0.2s' }}
+                  onMouseOver={e => e.target.style.transform = 'scale(1.02)'}
+                  onMouseOut={e => e.target.style.transform = 'scale(1)'}
+                  onError={e => e.target.style.display = 'none'} />
+                <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>👆 Toca para ampliar</div>
+              </div>
+            )}
+            <div style={{ padding: '12px 18px 16px' }}>
+              <RenderLines content={parsed[key] || ''} />
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -213,16 +228,20 @@ function TabAsesorIA({ p }) {
     setInput('')
     setMsgs(prev => [...prev, { role: 'user', text: q }, { role: 'ai', text: '' }])
     setLoading(true)
-    const context = `Eres un asesor de salud y nutrición amigable para adolescentes mexicanos. El participante se llama ${p.nombre}, tiene ${p.edad} años, sexo ${p.sexo}, peso ${p.peso}kg, altura ${p.altura}m, IMC ${p.imc ?? 'N/A'} (${p.imcStatus || 'Normal'}).${p.pruebas ? ` Pruebas: salto ${p.pruebas.saltoCuerda} reps, lanzamiento ${p.pruebas.lanzamiento}m, carrera ${p.pruebas.carrera}s.` : ' No realizó pruebas físicas.'} Responde en español de forma amigable, breve (máximo 3 líneas) y motivadora. Pregunta: ${q}`
-    let acumulado = ''
-    await geminiStream(context, (chunk) => {
-      acumulado += chunk
+
+    const context = `Eres un asesor de salud y nutrición amigable para adolescentes mexicanos. 
+El participante se llama ${p.nombre}, tiene ${p.edad} años, sexo ${p.sexo}, peso ${p.peso}kg, altura ${p.altura}m, IMC ${p.imc ?? 'N/A'} (${p.imcStatus || 'Normal'}).
+${p.pruebas ? `Pruebas físicas: salto ${p.pruebas.saltoCuerda} reps en 15s, lanzamiento ${p.pruebas.lanzamiento}m, carrera 45m en ${p.pruebas.carrera}s.` : 'No realizó pruebas físicas.'}
+Responde en español de forma amigable, breve (máximo 3 oraciones) y motivadora.
+Pregunta del usuario: ${q}`
+
+    await geminiStream(context, (acumulado) => {
       setMsgs(prev => {
         const updated = [...prev]
         updated[updated.length - 1] = { role: 'ai', text: acumulado }
         return updated
       })
-      setLoading(false)
+      if (loading) setLoading(false)
     })
     setLoading(false)
   }
@@ -293,37 +312,56 @@ function TabSimular({ p }) {
   const handleAnalyze = async () => {
     setAnalyzing(true)
     setAnalysis('')
-    let acumulado = ''
-    const prompt = `El usuario ${p.nombre} simula cambiar su peso de ${p.peso}kg a ${simPeso}kg y su tiempo de 45m de ${p.pruebas?.carrera ?? '—'}s a ${simCarrera}s. Nuevo IMC: ${newIMC.toFixed(2)} (${imcLabel}). Nueva velocidad: ${simV.toFixed(2)}m/s, aceleración: ${simA.toFixed(2)}m/s², fuerza: ${simF.toFixed(2)}N. Analiza de manera breve si estos cambios son saludables y cómo mejorar. Responde en máximo 2 oraciones en español.`
-    await geminiStream(prompt, (chunk) => {
-      acumulado += chunk
+    const prompt = `El usuario ${p.nombre} simula cambiar su peso de ${p.peso}kg a ${simPeso}kg y su tiempo de 45m de ${p.pruebas?.carrera ?? '—'}s a ${simCarrera.toFixed(2)}s. Nuevo IMC: ${newIMC.toFixed(2)} (${imcLabel}). Nueva velocidad: ${simV.toFixed(2)}m/s, aceleración: ${simA.toFixed(2)}m/s², fuerza: ${simF.toFixed(2)}N. Analiza brevemente si estos cambios son saludables y cómo mejorar. Máximo 2 oraciones en español.`
+    await geminiStream(prompt, (acumulado) => {
       setAnalysis(acumulado)
-      setAnalyzing(false)
+      if (analyzing) setAnalyzing(false)
     })
     setAnalyzing(false)
   }
 
-  const Slider = ({ label, value, min, max, step, onChange, current }) => (
-    <div>
-      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:12 }}>
-        <span style={{ color:'var(--text2)' }}>{label}</span>
-        <span className="stat" style={{ color:'var(--teal)', fontSize:13 }}>{value}</span>
-      </div>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(parseFloat(e.target.value))}
-        style={{ width:'100%', padding:0, height:6, borderRadius:3, appearance:'none', cursor:'pointer',
-          background:`linear-gradient(to right,var(--teal) 0%,var(--teal) ${(value-min)/(max-min)*100}%,var(--border) ${(value-min)/(max-min)*100}%,var(--border) 100%)`
-        }} />
-      {current !== undefined && <div style={{ fontSize:10, color:'var(--text3)', marginTop:3 }}>Actual: {current}</div>}
-    </div>
-  )
+  // Slider táctil — funciona con drag en móvil y desktop
+  const sliderRef = useRef(null)
+  const isDragging = useRef(false)
+
+  const makeSliderProps = (min, max, step, value, onChange) => {
+    const getValueFromEvent = (e) => {
+      const rect = sliderRef.current?.getBoundingClientRect?.() || e.target.getBoundingClientRect()
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX
+      const pct = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1)
+      const raw = min + pct * (max - min)
+      const stepped = Math.round(raw / step) * step
+      return Math.min(Math.max(parseFloat(stepped.toFixed(2)), min), max)
+    }
+    return {
+      type: 'range', min, max, step, value,
+      onChange: e => onChange(parseFloat(e.target.value)),
+      style: {
+        width: '100%', padding: 0, height: 6, borderRadius: 3,
+        appearance: 'none', cursor: 'pointer', touchAction: 'none',
+        background: `linear-gradient(to right,var(--teal) 0%,var(--teal) ${(value-min)/(max-min)*100}%,var(--border) ${(value-min)/(max-min)*100}%,var(--border) 100%)`
+      }
+    }
+  }
 
   return (
     <div className="fade">
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ fontWeight:700, color:'var(--teal)', marginBottom:14, fontSize:13 }}>⚖️ SIMULAR PESO Y ALTURA</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:14 }}>
-          <Slider label="Peso (kg)" value={peso} min={30} max={150} step={0.5} onChange={setPeso} current={`${p.peso} kg`} />
-          <Slider label="Altura (m)" value={altura} min={1.0} max={2.2} step={0.01} onChange={setAltura} current={`${p.altura} m`} />
+          {[
+            { label:'Peso (kg)', value:peso, min:30, max:150, step:0.5, onChange:setPeso, current:`${p.peso} kg` },
+            { label:'Altura (m)', value:altura, min:1.0, max:2.2, step:0.01, onChange:setAltura, current:`${p.altura} m` },
+          ].map(({ label, value, min, max, step, onChange, current }) => (
+            <div key={label}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:12 }}>
+                <span style={{ color:'var(--text2)' }}>{label}</span>
+                <span className="stat" style={{ color:'var(--teal)', fontSize:13 }}>{value}</span>
+              </div>
+              <input {...makeSliderProps(min, max, step, value, onChange)} />
+              <div style={{ fontSize:10, color:'var(--text3)', marginTop:3 }}>Actual: {current}</div>
+            </div>
+          ))}
         </div>
         <div style={{ padding:16, background: imcOk ? 'var(--teal-dim)' : 'rgba(245,158,11,0.1)', border:`1px solid ${imcColor}`, borderRadius:10, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div>
@@ -338,8 +376,18 @@ function TabSimular({ p }) {
         <div className="card" style={{ marginBottom: 14 }}>
           <div style={{ fontWeight:700, color:'var(--purple)', marginBottom:14, fontSize:13 }}>✨ SIMULAR RENDIMIENTO</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
-            <Slider label="Cambio de peso" value={deltaPeso} min={-20} max={20} step={0.5} onChange={setDeltaPeso} />
-            <Slider label="Cambio de tiempo" value={deltaT} min={-10} max={10} step={0.1} onChange={setDeltaT} />
+            {[
+              { label:'Cambio de peso', value:deltaPeso, min:-20, max:20, step:0.5, onChange:setDeltaPeso },
+              { label:'Cambio de tiempo', value:deltaT, min:-10, max:10, step:0.1, onChange:setDeltaT },
+            ].map(({ label, value, min, max, step, onChange }) => (
+              <div key={label}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:12 }}>
+                  <span style={{ color:'var(--text2)' }}>{label}</span>
+                  <span className="stat" style={{ color:'var(--teal)', fontSize:13 }}>{value > 0 ? `+${value}` : value}</span>
+                </div>
+                <input {...makeSliderProps(min, max, step, value, onChange)} />
+              </div>
+            ))}
           </div>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
             <thead>
